@@ -1,0 +1,293 @@
+// Prisma Schema for Manufacturing, Stock, Product Order, Delivery, Return, Inspection, Employee, and Traceability Management System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          Int       @id @default(autoincrement())
+  name        String
+  email       String    @unique
+  password    String    // Hashed with bcrypt
+  role        String    @default("ADMIN") // ADMIN
+  phone       String?
+  status      String    @default("ACTIVE") // ACTIVE, INACTIVE
+  createdBy   String?   // Admin who created this account
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Employee {
+  id          String   @id // e.g. EMP-001
+  name        String
+  email       String   @unique
+  phone       String
+  department  String   // RAM, ROM, GPU, Motherboard, Assembly, Inspection, Inventory, Sales, Delivery, Administration
+  role        String   // Manager, Operator, QA Inspector, Technician, Delivery Agent, Sales Executive
+  joiningDate DateTime @default(now())
+  status      String   @default("ACTIVE") // ACTIVE, INACTIVE
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Customer {
+  id        String   @id // e.g. CUST-001
+  name      String
+  email     String   @unique
+  phone     String
+  address   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id                String      @id // e.g. PC-2026-000001 or model code
+  name              String
+  description       String
+  specifications    String      // CPU, RAM, GPU, Storage, Motherboard specs
+  price             Float
+  availableQuantity Int         @default(0)
+  reservedQuantity  Int         @default(0)
+  warrantyMonths    Int         @default(12)
+  status            String      @default("AVAILABLE") // AVAILABLE, OUT_OF_STOCK, DISCONTINUED
+  assemblyId        String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  orderItems        OrderItem[]
+  cartItems         CartItem[]
+}
+
+model CartItem {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  customerName String @default("Walk-in Customer")
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id             String      @id // e.g. ORD-2026-000001
+  customerId     String
+  customerName   String
+  customerContact String
+  shippingAddress String
+  totalAmount    Float
+  paymentStatus  String      @default("PAID") // PENDING, PAID, REFUNDED
+  orderStatus    String      @default("PENDING") // PENDING, CONFIRMED, PROCESSING, SHIPPED, DELIVERED, CANCELLED, COMPLETED
+  orderDate      DateTime    @default(now())
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  items          OrderItem[]
+  delivery       Delivery?
+  returns        Return[]
+}
+
+model OrderItem {
+  id              Int      @id @default(autoincrement())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product  @relation(fields: [productId], references: [id])
+  quantity        Int
+  unitPrice       Float
+  totalPrice      Float
+  productSerialId String?  // Specific finished unit serial number PC-2026-XXXXXX
+}
+
+model Delivery {
+  id                   String    @id // e.g. DEL-2026-000001
+  orderId              String    @unique
+  order                Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerName         String
+  address              String
+  courier              String    @default("Internal Logistics")
+  trackingNumber       String    @unique
+  dispatchDate         DateTime?
+  expectedDeliveryDate DateTime?
+  actualDeliveryDate   DateTime?
+  deliveryStatus       String    @default("PACKED") // PACKED, SHIPPED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, FAILED
+  notes                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model Return {
+  id                String       @id // e.g. RET-2026-000001
+  orderId           String
+  order             Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId        String
+  customerName      String
+  productId         String
+  productSerialId   String?
+  returnReason      String
+  requestDate       DateTime     @default(now())
+  returnStatus      String       @default("REQUESTED") // REQUESTED, APPROVED, RECEIVED, UNDER_INSPECTION, APPROVED_FOR_REPLACEMENT, APPROVED_FOR_REFUND, REJECTED, COMPLETED
+  replacementStatus String       @default("NONE") // NONE, IN_PROGRESS, REPLACED
+  refundStatus      String       @default("NONE") // NONE, PENDING, REFUNDED
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  inspections       Inspection[]
+}
+
+model Inspection {
+  id                String    @id // e.g. INSP-2026-000001
+  returnId          String?
+  returnRef         Return?   @relation(fields: [returnId], references: [id], onDelete: SetNull)
+  productId         String
+  productSerialId   String?
+  inspectorId       String
+  inspectorName     String
+  inspectionDate    DateTime  @default(now())
+  inspectionTime    String?
+  defectType        String    // COMPONENT_FAILURE, PHYSICAL_DAMAGE, COMPATIBILITY_ISSUE, ASSEMBLY_DEFECT, NO_DEFECT
+  defectDescription String
+  testResult        String    // PASS, FAIL
+  remarks           String?
+  finalDecision     String    // DEFECT CONFIRMED, DEFECT NOT CONFIRMED, REPAIR, REPLACEMENT, REFUND, REJECT
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model InventoryItem {
+  id                 String   @id // e.g. STK-001
+  itemId             String   @unique // Item code / Part No
+  itemName           String
+  itemType           String   // RAW_MATERIAL, RAM, ROM, GPU, MOTHERBOARD, FINISHED_PRODUCT
+  category           String   // Raw Materials, RAM, ROM, GPU, Motherboard, Finished Products, Reserved Stock, Quarantine Stock, Rework Stock, Rejected Stock
+  availableQuantity  Int      @default(0)
+  reservedQuantity   Int      @default(0)
+  quarantineQuantity Int      @default(0)
+  reworkQuantity     Int      @default(0)
+  rejectedQuantity   Int      @default(0)
+  location           String   // Warehouse A, B, C, Shelf 1-10
+  unit               String   @default("Units")
+  status             String   @default("NORMAL") // NORMAL, LOW_STOCK, CRITICAL
+  lastUpdated        DateTime @default(now())
+}
+
+model InventoryMovement {
+  id            Int      @id @default(autoincrement())
+  itemId        String
+  itemName      String
+  itemType      String
+  quantity      Int
+  action        String   // RECEIVED, RESERVED, USED, RELEASED, QUARANTINED, REWORKED, REJECTED, ADJUSTED
+  referenceType String?  // MANUFACTURING, ASSEMBLY, ORDER, RETURN, INSPECTION
+  referenceId   String?
+  employeeName  String?
+  notes         String?
+  createdAt     DateTime @default(now())
+}
+
+model ManufacturingBatch {
+  id               String      @id // e.g. GPU-BATCH-001
+  productionId     String      // e.g. PROD-001
+  sector           String      // RAM, ROM, GPU, MOTHERBOARD
+  rawMaterialUsed  String
+  quantityPlanned  Int
+  quantityProduced Int         @default(0)
+  quantityPassed   Int         @default(0)
+  quantityFailed   Int         @default(0)
+  quantityReworked Int         @default(0)
+  startDate        DateTime    @default(now())
+  endDate          DateTime?
+  employeeId       String
+  employeeName     String
+  status           String      @default("PLANNED") // PLANNED, IN_PROGRESS, COMPLETED, VALIDATION, PASSED, FAILED, REWORK, REJECTED
+  remarks          String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  components       Component[]
+}
+
+model Component {
+  id             String             @id // e.g. GPU-000001, RAM-000001, ROM-000001, MB-000001
+  batchId        String
+  batch          ManufacturingBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  type           String             // RAM, ROM, GPU, MOTHERBOARD
+  modelName      String
+  specifications String
+  status         String             @default("AVAILABLE") // AVAILABLE, RESERVED, ASSEMBLED, FAILED, REWORK, REJECTED
+  manufacturedAt DateTime           @default(now())
+  validatedAt    DateTime?
+  reworkDate     DateTime?
+  notes          String?
+  assemblyId     String?
+  assembly       Assembly?          @relation(fields: [assemblyId], references: [id], onDelete: SetNull)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
+
+model Assembly {
+  id                    String         @id // e.g. ASM-2026-000001
+  productName           String
+  plannedQuantity       Int
+  completedQuantity     Int            @default(0)
+  status                String         @default("PLANNED") // PLANNED, IN_PROGRESS, COMPLETED, FAILED, REWORK
+  ramQuantity           Int            @default(1)
+  romQuantity           Int            @default(1)
+  gpuQuantity           Int            @default(1)
+  motherboardQuantity   Int            @default(1)
+  assemblyDate          DateTime       @default(now())
+  completedDate         DateTime?
+  employeeId            String
+  employeeName          String
+  finalValidationResult String         @default("PENDING") // PASS, FAIL, PENDING
+  notes                 String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  components            Component[]
+  assemblyItems         AssemblyItem[]
+}
+
+model AssemblyItem {
+  id                     Int       @id @default(autoincrement())
+  assemblyId             String
+  assembly               Assembly  @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  finishedProductId      String    @unique // e.g. PC-2026-000001
+  ramComponentId         String
+  romComponentId         String
+  gpuComponentId         String
+  motherboardComponentId String
+  assembledAt            DateTime  @default(now())
+  validatedAt            DateTime?
+  status                 String    @default("COMPLETED") // COMPLETED, DEFECTIVE, DISASSEMBLED
+  createdAt              DateTime  @default(now())
+}
+
+model ValidationRecord {
+  id             Int      @id @default(autoincrement())
+  referenceType  String   // MANUFACTURING_BATCH, COMPONENT, ASSEMBLY, FINISHED_PRODUCT
+  referenceId    String   // ID of the referenced entity
+  validationType String   // Electrical Test, Stress Test, Thermal Test, Functional Benchmark, Quality Inspection
+  result         String   // PASS, FAIL
+  testedBy       String
+  testParameters String?
+  remarks        String?
+  validatedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+}
+
+model TraceabilityEvent {
+  id                Int      @id @default(autoincrement())
+  finishedProductId String?
+  assemblyId        String?
+  componentId       String?
+  batchId           String?
+  orderId           String?
+  eventType         String   // MANUFACTURED, VALIDATED, ASSEMBLED, STOCKED, ORDERED, SHIPPED, DELIVERED, RETURNED, INSPECTED
+  description       String
+  actorName         String?
+  sector            String?
+  timestamp         DateTime @default(now())
+  detailsJson       String?
+}
